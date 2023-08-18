@@ -4,12 +4,75 @@ import { expect } from "chai";
 import { ethers } from "hardhat";
 
 describe("Lottery", function () {
+
+  async function getBalance(participant: any) {
+    return await ethers.provider.getBalance(participant);
+  }
+
   async function deployLotteryFixture() {
     const [owner, participantOne, participantTwo, participantThree] = await ethers.getSigners();
     const Lottery = await ethers.getContractFactory("Lottery");
     const lottery = await Lottery.deploy();
     return { lottery, owner, participantOne, participantTwo, participantThree };
   }
+
+  describe("Pick the winner - positive flow", function () {
+    it("Winner balance should change", async function () {
+      const { lottery, owner, participantOne, participantTwo, participantThree } = await loadFixture(deployLotteryFixture);
+        const weiValue = ethers.parseUnits("1","ether");
+        
+        await lottery.connect(participantOne).participate({ value: weiValue });
+        await lottery.connect(participantTwo).participate({ value: weiValue });
+        await lottery.connect(participantThree).participate({ value: weiValue });
+
+        let ownerBalanceAfterParticipation = await getBalance(owner);
+        let participantOneBalanceAfterParticipation = await getBalance(participantOne);
+        let participantTwoBalanceAfterParticipation = await getBalance(participantTwo);
+        let participantThreeBalanceAfterParticipation = await getBalance(participantThree);
+
+        let participantBalancesAfterParticipation: Array<bigint>;
+        participantBalancesAfterParticipation = [participantOneBalanceAfterParticipation, participantTwoBalanceAfterParticipation, participantThreeBalanceAfterParticipation];
+
+        console.log("BALANCES AFTER PARTICIPATING:");
+        console.log(participantBalancesAfterParticipation);
+
+        await lottery.connect(owner).pickTheWinner();
+
+        let ownerBalanceAfterLottery = await getBalance(owner);
+        let participantOneBalanceAfterLottery = await getBalance(participantOne);
+        let participantTwoBalancefterLottery = await getBalance(participantTwo);
+        let participantThreeBalanceAfterLottery = await getBalance(participantThree);
+
+        let participantBalancesAfterLottery: Array<bigint>;
+        participantBalancesAfterLottery = [participantOneBalanceAfterLottery, participantTwoBalancefterLottery, participantThreeBalanceAfterLottery];
+
+        console.log("BALANCES AFTER LOTTERY:");
+        console.log(participantBalancesAfterLottery);
+
+        expect(ownerBalanceAfterLottery).to.be.lessThan(ownerBalanceAfterParticipation,
+          "The administrator can't win!"
+        );
+
+        let winnerCount = 0;
+        let unchangedCount = 0;
+
+        for(let balanceAfterLottery of participantBalancesAfterLottery.values()){
+          // means balance is the same
+            if(participantBalancesAfterParticipation.includes(balanceAfterLottery)){
+              unchangedCount += 1; 
+            } else {
+              let prize = weiValue * BigInt(participantBalancesAfterParticipation.length);
+              let winnerBalance = balanceAfterLottery - prize;
+              if(participantBalancesAfterParticipation.includes(winnerBalance)){
+                winnerCount += 1;
+              } 
+            }
+        }
+
+        expect(winnerCount).to.equal(1, "Only 1 winner balace can be!");
+        expect(unchangedCount).to.equal(participantBalancesAfterLottery.length - 1, "Loser's count should be #participants - 1!");
+    });
+  });
 
   describe("Deployment", function () {
     it("The lottery smart contract can have only one owner", async function () {
